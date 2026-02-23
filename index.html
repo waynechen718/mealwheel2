@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Where Are We Eating?</title>
+<style>
+body { font-family: Arial; text-align: center; background: #f4f4f4; padding: 20px; }
+select, button, label { margin: 5px; padding: 6px; }
+canvas { background: white; border-radius: 50%; margin-top: 20px; }
+#result { margin-top: 20px; font-size: 22px; font-weight: bold; }
+.arrow { font-size: 40px; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<h1>🍽️ Where Are We Eating?</h1>
+
+<div>
+  <select id="cuisine"><option value="">All Cuisines</option></select>
+  <select id="price">
+    <option value="">All Prices</option>
+    <option value="$">$</option>
+    <option value="$$">$$</option>
+    <option value="$$$">$$$</option>
+  </select>
+  <select id="area"><option value="">All Areas</option></select>
+  <label><input type="checkbox" id="outdoor"> Outdoor</label>
+  <br>
+  <button onclick="applyFilters()">Apply Filters</button>
+  <button onclick="spinWheel()">Spin 🎯</button>
+</div>
+
+<div class="arrow">⬇️</div>
+<canvas id="wheel" width="400" height="400"></canvas>
+<div id="result"></div>
+
+<script>
+
+// 🔹 PASTE YOUR GOOGLE SHEET CSV LINK BELOW
+const SHEET_URL = https://docs.google.com/spreadsheets/d/e/2PACX-1vTIn64jOImdiKHLZfnJKGilvkY_aCLAJzeAKpdmOXogQqjbvLWr6NUZTyS5iAYojIoJb2IKChi0JXEP/pub?output=csv;
+
+let restaurants = [];
+let filteredRestaurants = [];
+let currentRotation = 0;
+
+const canvas = document.getElementById("wheel");
+const ctx = canvas.getContext("2d");
+
+async function fetchSheet() {
+  const response = await fetch(SHEET_URL);
+  const data = await response.text();
+  const rows = data.split("\n").slice(1);
+
+  restaurants = rows
+    .filter(r => r.trim() !== "")
+    .map(row => {
+      const [name, cuisine, price, area, outdoor] = row.split(",");
+      return {
+        name: name?.trim(),
+        cuisine: cuisine?.trim(),
+        price: price?.trim(),
+        area: area?.trim(),
+        outdoor: outdoor?.trim().toUpperCase() === "TRUE"
+      };
+    });
+
+  filteredRestaurants = [...restaurants];
+  populateFilters();
+  drawWheel();
+}
+
+function populateFilters() {
+  const cuisines = [...new Set(restaurants.map(r => r.cuisine))];
+  const areas = [...new Set(restaurants.map(r => r.area))];
+
+  cuisines.forEach(c => {
+    const option = document.createElement("option");
+    option.value = c;
+    option.textContent = c;
+    document.getElementById("cuisine").appendChild(option);
+  });
+
+  areas.forEach(a => {
+    const option = document.createElement("option");
+    option.value = a;
+    option.textContent = a;
+    document.getElementById("area").appendChild(option);
+  });
+}
+
+function applyFilters() {
+  const cuisine = document.getElementById("cuisine").value;
+  const price = document.getElementById("price").value;
+  const area = document.getElementById("area").value;
+  const outdoor = document.getElementById("outdoor").checked;
+
+  filteredRestaurants = restaurants.filter(r =>
+    (!cuisine || r.cuisine === cuisine) &&
+    (!price || r.price === price) &&
+    (!area || r.area === area) &&
+    (!outdoor || r.outdoor)
+  );
+
+  drawWheel();
+  document.getElementById("result").textContent = "";
+}
+
+function drawWheel() {
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  const count = filteredRestaurants.length;
+  if (count === 0) {
+    ctx.font = "20px Arial";
+    ctx.fillText("No Results", 150, 200);
+    return;
+  }
+
+  const angle = (2 * Math.PI) / count;
+
+  filteredRestaurants.forEach((r, i) => {
+    ctx.beginPath();
+    ctx.moveTo(200,200);
+    ctx.arc(200,200,200,i*angle,(i+1)*angle);
+    ctx.fillStyle = `hsl(${i*360/count},70%,60%)`;
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(200,200);
+    ctx.rotate(i*angle + angle/2);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "black";
+    ctx.font = "14px Arial";
+    ctx.fillText(r.name,180,5);
+    ctx.restore();
+  });
+}
+
+function spinWheel() {
+  if (filteredRestaurants.length === 0) return;
+
+  const spinAngle = Math.random()*360 + 720;
+  const spinDuration = 3000;
+  const start = performance.now();
+  const initialRotation = currentRotation;
+
+  function animate(now) {
+    const progress = Math.min((now-start)/spinDuration,1);
+    const ease = 1 - Math.pow(1-progress,3);
+    currentRotation = initialRotation + spinAngle*ease;
+
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.translate(200,200);
+    ctx.rotate(currentRotation*Math.PI/180);
+    ctx.translate(-200,-200);
+
+    drawWheel();
+
+    if(progress<1) requestAnimationFrame(animate);
+    else determineWinner();
+  }
+
+  requestAnimationFrame(animate);
+}
+
+function determineWinner() {
+  const count = filteredRestaurants.length;
+  const anglePerSlice = 360 / count;
+  const normalized = currentRotation % 360;
+  const index = Math.floor((360 - normalized) / anglePerSlice) % count;
+  const winner = filteredRestaurants[index];
+  document.getElementById("result").textContent = `🎉 Tonight: ${winner.name}!`;
+}
+
+fetchSheet();
+
+</script>
+</body>
+</html>
